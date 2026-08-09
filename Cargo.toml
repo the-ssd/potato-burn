@@ -1,0 +1,24 @@
+[package]
+name = "potato-burn"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+burn = { version = "0.21.0", features = [
+    "std",
+    "fusion",
+    "autodiff",
+    "train",
+    "tui",
+    "wgpu",
+    "dataset",
+    "vision",
+    "sqlite-bundled",
+], default-features = false }
+log = "0.4.33"
+rand = "0.10.2"
+serde = { version = "1.0.229", features = ["derive"] }
+tokenizers = { version = "0.23.1" }
+
+[profile.dev.package."*"]
+opt-level = 2
