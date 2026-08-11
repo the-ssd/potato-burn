@@ -2,10 +2,12 @@ use std::f32::consts::FRAC_PI_2;
 
 use burn::prelude::*;
 pub mod attention;
+pub mod bliniar;
 pub mod expand_reduce;
 pub mod expander;
 pub mod gate;
 pub mod reduction;
+pub mod transformer_layer;
 
 fn hamming_distance<B: Backend, const D: usize>(a: Tensor<B, D>, b: Tensor<B, D>) -> Tensor<B, D> {
     not(xor(a, b)).mean_dim(D - 1)

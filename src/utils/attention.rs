@@ -1,39 +1,113 @@
 use burn::{module::Param, prelude::*};
 
-use crate::utils::{expander::Expander, gate::LogicGate, reduction::Reducer, softmax1};
+use crate::utils::{
+    bliniar::{BLinear, BLinearConfig},
+    expander::Expander,
+    gate::LogicGate,
+    reduction::Reducer,
+    softmax1,
+};
 
 #[derive(Module, Debug)]
-pub struct BinaryAttention<B: Backend> {
+pub struct BinaryMultiHeadAttention<B: Backend> {
     // TODO: Position embedding
+    n_heads: usize,
+    /// Size of the key and query vectors.
+    d_k: usize,
     bias: Param<Tensor<B, 1>>,
-    mask: Tensor<B, 2, Bool>,
+    attention_mask: Tensor<B, 2, Bool>,
     alibi_dist: Tensor<B, 2>,
-    slope: Param<Tensor<B, 1>>,
+    alibi_slope: Param<Tensor<B, 1>>,
     temperature: Param<Tensor<B, 1>>,
+
+    q: BLinear<B>,
+    k: BLinear<B>,
+    v: BLinear<B>,
+    output_projection: BLinear<B>,
 }
 
-impl<B: Backend> BinaryAttention<B> {
-    pub fn init(device: &B::Device, max_seq_len: usize) -> Self {
-        let mask = Tensor::tril_mask([max_seq_len, max_seq_len], 0, device);
+impl<B: Backend> BinaryMultiHeadAttention<B> {
+    pub fn init(
+        device: &B::Device,
+        max_seq_len: usize,
+        n_heads: usize,
+        d_model: usize,
+        d_k: usize,
+    ) -> Self {
+        // TODO: Check if tril is correct
+        let attention_mask = Tensor::tril_mask([max_seq_len, max_seq_len], 0, device);
 
         let pos = Tensor::arange(0..max_seq_len as i64, device).float();
         let q_pos = pos.clone().unsqueeze_dim(1);
         let k_pos = pos.unsqueeze_dim(0);
         let dist = q_pos - k_pos;
-        let alibi_dist = dist.mask_fill(mask.clone(), 0);
+        let alibi_dist = dist.mask_fill(attention_mask.clone(), 0);
 
-        BinaryAttention {
-            bias: todo!(),
-            mask,
+        BinaryMultiHeadAttention {
+            bias: Param::from_tensor(Tensor::<B, 1>::from_data([0.0], device).expand([n_heads])),
+            attention_mask,
             alibi_dist,
-            temperature: todo!(),
-            slope: todo!(),
+            temperature: Param::from_data([2.0], device), // default to to so that tanh within -1 and 1 is almost no op
+            alibi_slope: Param::from_tensor(
+                Tensor::<B, 1>::from_data([0.1], device).expand([n_heads]),
+            ),
+            n_heads,
+            d_k,
+            q: BLinearConfig::new(d_model, d_model).init(device),
+            k: BLinearConfig::new(d_model, d_model).init(device),
+            v: BLinearConfig::new(d_model, d_model).init(device),
+            output_projection: BLinearConfig::new(d_model, d_model).init(device),
         }
     }
 
     // Tensor dims are [batch_size, tokens, embedding]
-    pub fn forward(&self, q: Tensor<B, 3>, k: Tensor<B, 3>, v: Tensor<B, 3>) -> Tensor<B, 3> {
-        let q: Tensor<B, 4> = q.unsqueeze_dim(2);
+    pub fn forward(
+        &self,
+        q: Tensor<B, 3>,
+        k: Tensor<B, 3>,
+        v: Tensor<B, 3>,
+        mask_pad: &Tensor<B, 2, Bool>,
+    ) -> Tensor<B, 3> {
+        let [batch_size, seq_length_1, d_model] = q.dims();
+
+        let q = self.attention_linear(q, &self.q);
+        let k = self.attention_linear(k, &self.k);
+        let v = self.attention_linear(v, &self.v);
+
+        //let alibi = self.alibi_dist.clone().unsqueeze()
+        //    * self.alibi_slope.val().unsqueeze_dims(&[0, -1, -1]);
+        // TODO: change div?, add ALiBi
+        let attn_scores = q.matmul(k.transpose()).div_scalar((self.d_k as f32).sqrt());
+        let attn_scores = (
+            attn_scores * self.temperature.val().unsqueeze()
+                + self.bias.val().unsqueeze_dims(&[0, -1, -1])
+            //+ alibi
+        )
+        .tanh();
+
+        let [batch_size, seq_length] = mask_pad.dims();
+        let mask_attn = nn::attention::generate_autoregressive_mask::<B>(
+            batch_size,
+            seq_length,
+            &self.devices()[0],
+        );
+        let weights = attn_scores
+            .mask_fill(mask_attn.unsqueeze(), -f32::INFINITY)
+            .mask_fill(
+                mask_pad.clone().reshape([batch_size, 1, 1, seq_length]),
+                -f32::INFINITY,
+            );
+        let weights = softmax1(weights, 3);
+
+        let context = weights.clone().matmul(v); // NOTE: No transposition
+        let context = context
+            .swap_dims(1, 2)
+            .reshape([batch_size, seq_length_1, d_model]);
+
+        let context = self.output_projection.forward(context);
+
+        context
+        /*let q: Tensor<B, 4> = q.unsqueeze_dim(2);
         let k: Tensor<B, 4> = k.unsqueeze_dim(1);
         // [batch, query_token, key_token, embedding * embedding]
         let xnor = q * k;
@@ -41,6 +115,7 @@ impl<B: Backend> BinaryAttention<B> {
         let sum: Tensor<B, 3> = xnor.sum_dim(3).squeeze_dim(3); // Sum across embeddings
 
         let scores = sum * self.temperature.val().unsqueeze() + self.bias.val().unsqueeze();
+        let scores = scores.tanh();
 
         let scores = scores.mask_fill(self.mask.clone().unsqueeze(), -f32::INFINITY);
         let scores_normilized = softmax1(scores, 2);
@@ -50,6 +125,14 @@ impl<B: Backend> BinaryAttention<B> {
             .sum_dim(2)
             .squeeze_dim(2);
 
-        output
+        output*/
+    }
+
+    pub fn attention_linear(&self, x: Tensor<B, 3>, linear: &BLinear<B>) -> Tensor<B, 4> {
+        let [batch_size, seq_length, _d_model] = x.dims();
+        linear
+            .forward(x)
+            .reshape([batch_size, seq_length, self.n_heads, self.d_k])
+            .swap_dims(1, 2)
     }
 }

@@ -1,4 +1,5 @@
 use crate::{
+    cli_renderer::CliMetricsRenderer,
     data::{FalconTokenizer, TextGenerationBatcher, TextGenerationItem, Tokenizer},
     model::TextGenerationModelConfig,
 };
@@ -27,7 +28,7 @@ pub struct ExperimentConfig {
     optimizer: AdamConfig,
     #[config(default = 256)]
     max_seq_length: usize,
-    #[config(default = 1)]
+    #[config(default = 4)]
     batch_size: usize,
     #[config(default = 1)]
     num_epochs: usize,
@@ -60,13 +61,14 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
         tokenizer.vocab_size(),
         tokenizer.pad_token(),
         config.max_seq_length,
+        256,
     )
     .init::<B>(&device);
 
     let dataloader_train = DataLoaderBuilder::new(batcher.clone())
         .batch_size(config.batch_size)
-        .num_workers(6)
-        .build(SamplerDataset::new(dataset_train, 10_000));
+        .num_workers(8)
+        .build(SamplerDataset::new(dataset_train, 20_000));
 
     let dataloader_test = DataLoaderBuilder::new(batcher)
         .batch_size(config.batch_size)
@@ -95,6 +97,7 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
         .with_file_checkpointer(CompactRecorder::new())
         .grads_accumulation(accum)
         .num_epochs(config.num_epochs)
+        //.renderer(CliMetricsRenderer::new())
         .summary();
 
     let result = training.launch(Learner::new(model, optim, lr_scheduler));

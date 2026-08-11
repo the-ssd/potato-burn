@@ -38,14 +38,14 @@ impl<B: Backend> LogicGate<B> {
     }
 
     // Tensors are 2D because of batching
-    pub fn forward(&self, a: Tensor<B, 2>, b: Tensor<B, 2>) -> Tensor<B, 2> {
+    pub fn forward<const D: usize>(&self, a: Tensor<B, D>, b: Tensor<B, D>) -> Tensor<B, D> {
         //a.repeat_dim(1, times);
         //let a = a.clamp(-1.0, 1.0);
         //let b = b.clamp(-1.0, 1.0);
         let [w00, w01, w10, w11] = &self.params;
-        assert_eq!(a.dims()[1], w00.dims()[0]);
+        //assert_eq!(a.dims()[1], w00.dims()[0]);
 
-        assert!(
+        /*assert!(
             w00.val()
                 .clone()
                 .equal_elem(f32::NAN)
@@ -65,7 +65,7 @@ impl<B: Backend> LogicGate<B> {
                 .as_slice::<bool>()
                 .unwrap()[0]
                 == false,
-        );
+        );*/
         let correction = 1.0 / 16.0
             * (a.clone().powi_scalar(2) + b.clone().powi_scalar(2) - 2)
             * (1.0
@@ -78,11 +78,11 @@ impl<B: Backend> LogicGate<B> {
                 + soft_clamp(w10.val().unsqueeze())
                 + soft_clamp(w11.val().unsqueeze()));
 
-        let a0: Tensor<B, 2> = 1.0 - a.clone();
-        let a1: Tensor<B, 2> = 1.0 + a;
+        let a0: Tensor<B, D> = 1.0 - a.clone();
+        let a1: Tensor<B, D> = 1.0 + a;
 
-        let b0: Tensor<B, 2> = 1.0 - b.clone();
-        let b1: Tensor<B, 2> = 1.0 + b;
+        let b0: Tensor<B, D> = 1.0 - b.clone();
+        let b1: Tensor<B, D> = 1.0 + b;
 
         let lookup_table = (a0.clone() * b0.clone() * soft_clamp(w00.val().unsqueeze())
             + a0 * b1.clone() * soft_clamp(w01.val().unsqueeze())

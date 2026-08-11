@@ -14,7 +14,7 @@ use log::debug;
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 
 use crate::{
-    data::ClassificationBatch,
+    cifar::ClassificationBatch,
     utils::{expand_reduce::ExpandReduce, gate::LogicGate, *},
 };
 

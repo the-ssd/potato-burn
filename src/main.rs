@@ -2,11 +2,10 @@
 #![allow(unused)]
 //#![feature(f16)]
 
-use crate::{cifar_training::TrainingConfig, data::DbPediaDataset, training::ExperimentConfig};
+use crate::{data::DbPediaDataset, training::ExperimentConfig};
 use burn::optim::{AdamConfig, decay::WeightDecayConfig};
 
-mod cifar_model;
-mod cifar_training;
+mod cifar;
 mod cli_renderer;
 mod data;
 mod model;
@@ -24,12 +23,11 @@ fn main() {
         Default::default(),
     );
 
-    let config = TrainingConfig::new(AdamConfig::new());
+    /*let config = TrainingConfig::new(AdamConfig::new());
 
-    cifar_training::train::<Backend>(config, device);
+    cifar::cifar_training::train::<Backend>(config, device);*/
 
-    /*let config = ExperimentConfig::default();
-
+    let config = ExperimentConfig::default();
 
     crate::training::train::<Backend, DbPediaDataset>(
         device,
@@ -37,5 +35,5 @@ fn main() {
         DbPediaDataset::test(),
         config,
         "target/artifacts",
-    );*/
+    );
 }

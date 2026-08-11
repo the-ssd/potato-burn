@@ -1,9 +1,5 @@
 use std::time::Instant;
 
-use crate::{
-    cifar_model::CifarModel,
-    data::{CIFAR10Loader, ClassificationBatch, ClassificationBatcher},
-};
 use burn::{
     data::{dataloader::DataLoaderBuilder, dataset::vision::ImageFolderDataset},
     nn::loss::CrossEntropyLossConfig,
@@ -16,6 +12,8 @@ use burn::{
         metric::{AccuracyMetric, LossMetric, PerplexityMetric},
     },
 };
+
+use crate::cifar::{CIFAR10Loader, CifarModel, ClassificationBatcher};
 
 const NUM_CLASSES: u8 = 10;
 const ARTIFACT_DIR: &str = "/tmp/custom-image-dataset";

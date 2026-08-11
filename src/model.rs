@@ -1,4 +1,7 @@
-use crate::{data::TrainingTextGenerationBatch, utils::*};
+use crate::{
+    data::TrainingTextGenerationBatch,
+    utils::{transformer_layer::TransformerLayer, *},
+};
 use burn::{
     nn::{
         Embedding, EmbeddingConfig, Linear, LinearConfig,
@@ -17,70 +20,84 @@ pub struct TextGenerationModelConfig {
     vocab_size: usize,
     pad_token: usize,
     max_seq_length: usize,
+    embedding_dimensions: usize,
 }
 
 #[derive(Module, Debug)]
 pub struct TextGenerationModel<B: Backend> {
-    transformer: TransformerEncoder<B>,
+    //transformer: TransformerEncoder<B>,
+    transformer_layers: Vec<TransformerLayer<B>>,
     embedding_token: Embedding<B>,
-    embedding_pos: Embedding<B>,
+    //embedding_pos: Embedding<B>,
     //output: Linear<B>,
+    embedding_dimensions: usize,
     vocab_size: usize,
     pad_token: usize,
     max_seq_length: usize,
 }
 /*
-
-[src/training.rs:66:5] model.num_params() = 17929728
 ======================== Learner Summary ========================
 Model:
 "TextGenerationModel" {
   transformer: TransformerEncoder {d_model: 256, d_ff: 512, n_heads: 2, n_layers: 2, dropout: 0.1, norm_first: true, quiet_softmax: false, params: 1054208}
   embedding_token: Embedding {n_embedding: 32768, d_model: 256, params: 8388608}
-  embedding_pos: Embedding {n_embedding: 256, d_model: 256, params: 65536}
-  output: Linear {d_input: 256, d_output: 32768, bias: true, params: 8421376}
+  embedding_dimensions: 256
   vocab_size: 32768
   pad_token: 0
   max_seq_length: 256
-  params: 17929728
+  params: 9442816
 }
 Total Epochs: 1
 
 
 | Split | Metric        | Min.     | Epoch    | Max.     | Epoch    |
 |-------|---------------|----------|----------|----------|----------|
-| Train | Accuracy      | 2.346    | 1        | 2.346    | 1        |
-| Train | Learning Rate | 1.589e-6 | 1        | 1.589e-6 | 1        |
-| Train | Loss          | 9.894    | 1        | 9.894    | 1        |
-| Train | Perplexity    | 24850.624| 1        | 24850.624| 1        |
-| Valid | Accuracy      | 3.732    | 1        | 3.732    | 1        |
-| Valid | Loss          | 9.156    | 1        | 9.156    | 1        |
-| Valid | Perplexity    | 9560.593 | 1        | 9560.593 | 1        |
+| Train | Accuracy      | 21.432   | 1        | 21.432   | 1        |
+| Train | Learning Rate | 2.500e-3 | 1        | 2.500e-3 | 1        |
+| Train | Loss          | 5.538    | 1        | 5.538    | 1        |
+| Train | Perplexity    | 964278.726| 1        | 964278.726| 1        |
+| Valid | Accuracy      | 25.428   | 1        | 25.428   | 1        |
+| Valid | Loss          | 4.822    | 1        | 4.822    | 1        |
+| Valid | Perplexity    | 139.599  | 1        | 139.599  | 1        |
+
+
+  params: 9444874
+}
+Total Epochs: 1
+
+
+| Split | Metric        | Min.     | Epoch    | Max.     | Epoch    |
+|-------|---------------|----------|----------|----------|----------|
+| Train | Accuracy      | 22.272   | 1        | 22.272   | 1        |
+| Train | Learning Rate | 2.500e-3 | 1        | 2.500e-3 | 1        |
+| Train | Loss          | 5.429    | 1        | 5.429    | 1        |
+| Train | Perplexity    | 107446592.998| 1        | 107446592.998| 1        |
+| Valid | Accuracy      | 26.684   | 1        | 26.684   | 1        |
+| Valid | Loss          | 4.652    | 1        | 4.652    | 1        |
+| Valid | Perplexity    | 117.021  | 1        | 117.021  | 1        |
+
 
 */
 impl TextGenerationModelConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> TextGenerationModel<B> {
         //let output = LinearConfig::new(self.transformer.d_model, self.vocab_size).init(device);
-        let transformer = self.transformer.init(device);
-        let embedding_token = EmbeddingConfig::new(self.vocab_size, self.transformer.d_model)
+        //let transformer = self.transformer.init(device);
+        let embedding_token = EmbeddingConfig::new(self.vocab_size, self.embedding_dimensions)
             .with_initializer(nn::Initializer::Uniform {
-                min: -1.0,
-                max: 1.0,
-            })
-            .init(device);
-
-        let embedding_pos = EmbeddingConfig::new(self.max_seq_length, self.transformer.d_model)
-            .with_initializer(nn::Initializer::Uniform {
-                min: -1.0,
-                max: 1.0,
+                min: -0.5,
+                max: 0.5,
             })
             .init(device);
 
         TextGenerationModel {
-            transformer,
+            //transformer,
+            transformer_layers: vec![
+                TransformerLayer::init(device, self.max_seq_length, 2, self.transformer.d_model),
+                TransformerLayer::init(device, self.max_seq_length, 2, self.transformer.d_model),
+            ],
             embedding_token,
-            embedding_pos,
             //output,
+            embedding_dimensions: self.embedding_dimensions,
             vocab_size: self.vocab_size,
             pad_token: self.pad_token,
             max_seq_length: self.max_seq_length,
@@ -110,16 +127,21 @@ impl<B: Backend> TextGenerationModel<B> {
         //let embedding = xor(sigmoid(embedding_tokens), sigmoid(embedding_positions));
         let embedding = soft_clamp(embedding_tokens);
 
-        let mask_attn = generate_autoregressive_mask::<B>(batch_size, seq_length, device);
-        let encoded = self.transformer.forward(
+        //let mask_attn = generate_autoregressive_mask::<B>(batch_size, seq_length, device);
+        /*let encoded = self.transformer.forward(
             TransformerEncoderInput::new(embedding)
                 .mask_pad(mask_pad)
                 .mask_attn(mask_attn),
-        );
+        );*/
+        let mut output = embedding;
+        for transformer in &self.transformer_layers {
+            output = transformer.forward(output, &mask_pad);
+        }
+        let encoded = output;
 
         let embeddings = self.embedding_token.weight.val();
         let embeddings = embeddings.transpose();
-        let output = sigmoid(encoded).matmul(soft_clamp(embeddings).unsqueeze());
+        let output = encoded.matmul(embeddings.unsqueeze()); // TODO: Bias
         let output_flatten = output.reshape([batch_size * seq_length, self.vocab_size]);
 
         /*let output = self.output.forward(encoded);
