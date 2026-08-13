@@ -46,7 +46,7 @@ impl Tokenizer for FalconTokenizer {
             true => "<|begin_of_text|>".to_owned() + value + "<|end_of_text|>",
             false => value.to_string(),
         };
-        let tokens = self.tokenizer.encode(text, true).unwrap();
+        let tokens = self.tokenizer.encode_fast(text, true).unwrap();
         tokens.get_ids().iter().map(|t| *t as usize).collect()
     }
 

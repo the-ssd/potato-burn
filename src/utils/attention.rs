@@ -14,11 +14,13 @@ pub struct BinaryMultiHeadAttention<B: Backend> {
     n_heads: usize,
     /// Size of the key and query vectors.
     d_k: usize,
-    bias: Param<Tensor<B, 1>>,
     attention_mask: Tensor<B, 2, Bool>,
     alibi_dist: Tensor<B, 2>,
     alibi_slope: Param<Tensor<B, 1>>,
-    temperature: Param<Tensor<B, 1>>,
+    temperature1: Param<Tensor<B, 1>>,
+    bias1: Param<Tensor<B, 1>>,
+    temperature2: Param<Tensor<B, 1>>,
+    bias2: Param<Tensor<B, 1>>,
 
     q: BLinear<B>,
     k: BLinear<B>,
@@ -36,18 +38,26 @@ impl<B: Backend> BinaryMultiHeadAttention<B> {
     ) -> Self {
         // TODO: Check if tril is correct
         let attention_mask = Tensor::tril_mask([max_seq_len, max_seq_len], 0, device);
+        //let attention_mask = Tensor::triu_mask([max_seq_len, max_seq_len], 0, device);
 
         let pos = Tensor::arange(0..max_seq_len as i64, device).float();
         let q_pos = pos.clone().unsqueeze_dim(1);
         let k_pos = pos.unsqueeze_dim(0);
         let dist = q_pos - k_pos;
+        let dist = dist.clamp_max(64);
         let alibi_dist = dist.mask_fill(attention_mask.clone(), 0);
 
         BinaryMultiHeadAttention {
-            bias: Param::from_tensor(Tensor::<B, 1>::from_data([0.0], device).expand([n_heads])),
             attention_mask,
             alibi_dist,
-            temperature: Param::from_data([2.0], device), // default to to so that tanh within -1 and 1 is almost no op
+            temperature1: Param::from_tensor(
+                Tensor::<B, 1>::from_data([1.0], device).expand([n_heads]),
+            ),
+            bias1: Param::from_tensor(Tensor::<B, 1>::from_data([0.0], device).expand([n_heads])),
+            temperature2: Param::from_tensor(
+                Tensor::<B, 1>::from_data([1.0], device).expand([n_heads]),
+            ),
+            bias2: Param::from_tensor(Tensor::<B, 1>::from_data([0.0], device).expand([n_heads])),
             alibi_slope: Param::from_tensor(
                 Tensor::<B, 1>::from_data([0.1], device).expand([n_heads]),
             ),
@@ -69,37 +79,42 @@ impl<B: Backend> BinaryMultiHeadAttention<B> {
         mask_pad: &Tensor<B, 2, Bool>,
     ) -> Tensor<B, 3> {
         let [batch_size, seq_length_1, d_model] = q.dims();
+        let [batch_size, seq_length] = mask_pad.dims();
 
         let q = self.attention_linear(q, &self.q);
         let k = self.attention_linear(k, &self.k);
         let v = self.attention_linear(v, &self.v);
 
-        //let alibi = self.alibi_dist.clone().unsqueeze()
-        //    * self.alibi_slope.val().unsqueeze_dims(&[0, -1, -1]);
+        let alibi_dist = self
+            .alibi_dist
+            .clone()
+            .slice([0..seq_length, 0..seq_length]);
+        let alibi = alibi_dist.unsqueeze() * self.alibi_slope.val().unsqueeze_dims(&[0, -1, -1]);
         // TODO: change div?, add ALiBi
         let attn_scores = q.matmul(k.transpose()).div_scalar((self.d_k as f32).sqrt());
-        let attn_scores = (
-            attn_scores * self.temperature.val().unsqueeze()
-                + self.bias.val().unsqueeze_dims(&[0, -1, -1])
-            //+ alibi
-        )
-        .tanh();
+        let attn_scores = (attn_scores * self.temperature1.val().unsqueeze_dims(&[0, -1, -1])
+            + self.bias1.val().unsqueeze_dims(&[0, -1, -1])
+            + alibi)
+            .tanh();
 
-        let [batch_size, seq_length] = mask_pad.dims();
         let mask_attn = nn::attention::generate_autoregressive_mask::<B>(
             batch_size,
             seq_length,
             &self.devices()[0],
         );
         let weights = attn_scores
-            .mask_fill(mask_attn.unsqueeze(), -f32::INFINITY)
+            .mask_fill(mask_attn.unsqueeze_dim(1), -f32::INFINITY)
             .mask_fill(
                 mask_pad.clone().reshape([batch_size, 1, 1, seq_length]),
                 -f32::INFINITY,
             );
         let weights = softmax1(weights, 3);
 
-        let context = weights.clone().matmul(v); // NOTE: No transposition
+        // NOTE: No transposition
+        let context = (weights.matmul(v) * self.temperature1.val().unsqueeze_dims(&[0, -1, -1])
+            + self.bias1.val().unsqueeze_dims(&[0, -1, -1]))
+        .tanh();
+
         let context = context
             .swap_dims(1, 2)
             .reshape([batch_size, seq_length_1, d_model]);

@@ -1,8 +1,9 @@
 use crate::{
-    data::TrainingTextGenerationBatch,
+    data::{FalconTokenizer, Tokenizer, TrainingTextGenerationBatch},
     utils::{transformer_layer::TransformerLayer, *},
 };
 use burn::{
+    module::Param,
     nn::{
         Embedding, EmbeddingConfig, Linear, LinearConfig,
         attention::generate_autoregressive_mask,
@@ -16,18 +17,25 @@ use burn::{
 
 #[derive(Config, Debug)]
 pub struct TextGenerationModelConfig {
-    transformer: TransformerEncoderConfig,
-    vocab_size: usize,
-    pad_token: usize,
+    #[config(default = 4)]
+    num_layers: usize,
+    #[config(default = 256)]
     max_seq_length: usize,
+    #[config(default = 256)]
     embedding_dimensions: usize,
+    #[config(default = 4)]
+    n_heads: usize,
+    #[config(default = 256)]
+    d_model: usize,
 }
 
 #[derive(Module, Debug)]
 pub struct TextGenerationModel<B: Backend> {
-    //transformer: TransformerEncoder<B>,
     transformer_layers: Vec<TransformerLayer<B>>,
+    //bias: Param<Tensor<B, 1>>,
     embedding_token: Embedding<B>,
+    temperature: Param<Tensor<B, 1>>,
+    bias: Param<Tensor<B, 1>>,
     //embedding_pos: Embedding<B>,
     //output: Linear<B>,
     embedding_dimensions: usize,
@@ -68,38 +76,47 @@ Total Epochs: 1
 
 | Split | Metric        | Min.     | Epoch    | Max.     | Epoch    |
 |-------|---------------|----------|----------|----------|----------|
-| Train | Accuracy      | 22.272   | 1        | 22.272   | 1        |
-| Train | Learning Rate | 2.500e-3 | 1        | 2.500e-3 | 1        |
-| Train | Loss          | 5.429    | 1        | 5.429    | 1        |
-| Train | Perplexity    | 107446592.998| 1        | 107446592.998| 1        |
-| Valid | Accuracy      | 26.684   | 1        | 26.684   | 1        |
-| Valid | Loss          | 4.652    | 1        | 4.652    | 1        |
-| Valid | Perplexity    | 117.021  | 1        | 117.021  | 1        |
+| Valid | Accuracy      | 35.337   | 1        | 35.337   | 1        |
+| Valid | Loss          | 2.694    | 1        | 2.694    | 1        |
+| Valid | Perplexity    | 42.219   | 1        | 42.219   | 1        |
+
 
 
 */
 impl TextGenerationModelConfig {
-    pub fn init<B: Backend>(&self, device: &B::Device) -> TextGenerationModel<B> {
+    pub fn init<B: Backend>(
+        &self,
+        device: &B::Device,
+        tokenizer: &FalconTokenizer,
+    ) -> TextGenerationModel<B> {
         //let output = LinearConfig::new(self.transformer.d_model, self.vocab_size).init(device);
         //let transformer = self.transformer.init(device);
-        let embedding_token = EmbeddingConfig::new(self.vocab_size, self.embedding_dimensions)
-            .with_initializer(nn::Initializer::Uniform {
-                min: -0.5,
-                max: 0.5,
-            })
-            .init(device);
+        let embedding_token =
+            EmbeddingConfig::new(tokenizer.vocab_size(), self.embedding_dimensions)
+                .with_initializer(nn::Initializer::Uniform {
+                    min: -0.1,
+                    max: 0.1,
+                })
+                .init(device);
+        let mut transformer_layers = vec![];
+        for i in 0..self.num_layers {
+            transformer_layers.push(TransformerLayer::init(
+                device,
+                self.max_seq_length,
+                self.n_heads,
+                self.d_model,
+            ));
+        }
 
         TextGenerationModel {
-            //transformer,
-            transformer_layers: vec![
-                TransformerLayer::init(device, self.max_seq_length, 2, self.transformer.d_model),
-                TransformerLayer::init(device, self.max_seq_length, 2, self.transformer.d_model),
-            ],
+            transformer_layers,
             embedding_token,
+            temperature: Param::from_data([1.0], device),
+            bias: Param::from_data([0.0], device),
             //output,
             embedding_dimensions: self.embedding_dimensions,
-            vocab_size: self.vocab_size,
-            pad_token: self.pad_token,
+            vocab_size: tokenizer.vocab_size(),
+            pad_token: tokenizer.pad_token(),
             max_seq_length: self.max_seq_length,
         }
     }
@@ -140,8 +157,8 @@ impl<B: Backend> TextGenerationModel<B> {
         let encoded = output;
 
         let embeddings = self.embedding_token.weight.val();
-        let embeddings = embeddings.transpose();
-        let output = encoded.matmul(embeddings.unsqueeze()); // TODO: Bias
+        let embeddings = embeddings.transpose().tanh();
+        let output = encoded.matmul(embeddings.unsqueeze()) * self.temperature.val().unsqueeze();
         let output_flatten = output.reshape([batch_size * seq_length, self.vocab_size]);
 
         /*let output = self.output.forward(encoded);

@@ -8,6 +8,7 @@ use burn::prelude::*;
 
 #[derive(Module, Debug)]
 pub struct TransformerLayer<B: Backend> {
+    // move q k v. make it grouped attention
     attention: BinaryMultiHeadAttention<B>,
     residual1: LogicGate<B>,
     liniar1: BLinear<B>,
@@ -27,8 +28,8 @@ impl<B: Backend> TransformerLayer<B> {
                 d_model / n_heads,
             ),
             residual1: LogicGate::init(device, d_model),
-            liniar1: BLinearConfig::new(d_model, d_model * 2).init(device),
-            liniar2: BLinearConfig::new(d_model * 2, d_model).init(device),
+            liniar1: BLinearConfig::new(d_model, d_model * 4).init(device),
+            liniar2: BLinearConfig::new(d_model * 4, d_model).init(device),
             er_layer: ExpandReduce::init(device, d_model, d_model, &mut rand::rng()),
             residual2: LogicGate::init(device, d_model),
         }

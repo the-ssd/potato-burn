@@ -8,6 +8,7 @@ use burn::optim::{AdamConfig, decay::WeightDecayConfig};
 mod cifar;
 mod cli_renderer;
 mod data;
+mod inference;
 mod model;
 mod utils;
 
@@ -16,6 +17,8 @@ mod training;
 type Backend = burn::backend::Autodiff<burn::backend::Wgpu>;
 
 fn main() {
+    //return inference::gpu_infer::infer();
+
     let device = Default::default();
     // Force Vulkan
     burn::backend::wgpu::init_setup::<burn::backend::wgpu::graphics::Vulkan>(

@@ -30,6 +30,7 @@ pub struct BLinear<B: Backend> {
     pub weight: Param<Tensor<B, 2>>,
     /// Vector of size `d_output`
     pub bias: Param<Tensor<B, 1>>,
+    pub temperature: Param<Tensor<B, 1>>,
 }
 
 impl BLinearConfig {
@@ -56,7 +57,11 @@ impl BLinearConfig {
             device,
         );
 
-        BLinear { weight, bias }
+        BLinear {
+            weight,
+            bias,
+            temperature: Param::from_data([1.0], device),
+        }
     }
 }
 
@@ -82,7 +87,15 @@ impl<B: Backend> BLinear<B> {
             self.weight.val().into_primitive().tensor(),
             Some(self.bias.val().into_primitive().tensor()),
         );*/
-        burn::tensor::module::linear(input, self.weight.val(), Some(self.bias.val())).tanh()
+        burn::tensor::module::linear(
+            input,
+            self.weight
+                .val()
+                .tanh()
+                .mul(self.temperature.val().unsqueeze()),
+            Some(self.bias.val()),
+        )
+        .tanh()
         //(input.matmul(self.weight.val().unsqueeze()) + self.bias.val().unsqueeze()).tanh()
     }
 }

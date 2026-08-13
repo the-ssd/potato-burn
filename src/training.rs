@@ -8,7 +8,7 @@ use burn::{
         dataloader::DataLoaderBuilder,
         dataset::{Dataset, transform::SamplerDataset},
     },
-    lr_scheduler::noam::NoamLrSchedulerConfig,
+    lr_scheduler::{self, noam::NoamLrSchedulerConfig},
     nn::transformer::TransformerEncoderConfig,
     optim::{AdamConfig, decay::WeightDecayConfig},
     prelude::*,
@@ -24,12 +24,12 @@ use std::sync::Arc;
 
 #[derive(Config, Debug)]
 pub struct ExperimentConfig {
-    transformer: TransformerEncoderConfig,
+    pub model: TextGenerationModelConfig,
     optimizer: AdamConfig,
     #[config(default = 256)]
-    max_seq_length: usize,
-    #[config(default = 4)]
-    batch_size: usize,
+    pub max_seq_length: usize,
+    #[config(default = 3)]
+    pub batch_size: usize,
     #[config(default = 1)]
     num_epochs: usize,
 }
@@ -37,12 +37,9 @@ pub struct ExperimentConfig {
 impl Default for ExperimentConfig {
     fn default() -> Self {
         ExperimentConfig::new(
-            burn::nn::transformer::TransformerEncoderConfig::new(256, 256 * 2, 2, 2)
-                .with_norm_first(true),
+            TextGenerationModelConfig::new(),
             burn::optim::AdamConfig::new().with_weight_decay(Some(WeightDecayConfig::new(1.0e-6))),
         )
-        .with_batch_size(1)
-        .with_num_epochs(1)
     }
 }
 
@@ -56,33 +53,30 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
     let tokenizer = Arc::new(FalconTokenizer::default());
     let batcher = TextGenerationBatcher::new(tokenizer.clone(), config.max_seq_length);
 
-    let model = TextGenerationModelConfig::new(
-        config.transformer.clone(),
-        tokenizer.vocab_size(),
-        tokenizer.pad_token(),
-        config.max_seq_length,
-        256,
-    )
-    .init::<B>(&device);
+    let model = config.model.init::<B>(&device, &tokenizer);
 
     let dataloader_train = DataLoaderBuilder::new(batcher.clone())
         .batch_size(config.batch_size)
         .num_workers(8)
-        .build(SamplerDataset::new(dataset_train, 20_000));
+        .build(SamplerDataset::new(dataset_train, 500_000)); // 20_000
 
     let dataloader_test = DataLoaderBuilder::new(batcher)
         .batch_size(config.batch_size)
         .num_workers(6)
         .build(SamplerDataset::new(dataset_test, 1000));
 
-    let accum = 4; // Effective batch size = 6 * 1 = 6.
+    let accum = 3; // Effective batch size = 3 * 3 = 9
     let optim = config.optimizer.init();
     /*let lr_scheduler = NoamLrSchedulerConfig::new(0.01 / accum as f64)
     .with_warmup_steps(1000)
     .with_model_size(config.transformer.d_model)
     .init()
     .unwrap();*/
-    let lr_scheduler = 0.01 / accum as f64;
+
+    let lr_scheduler = lr_scheduler::linear::LinearLrSchedulerConfig::new(0.001, 0.02, 2000)
+        .init()
+        .unwrap();
+    //let lr_scheduler = 0.02 / accum as f64;
 
     let training = SupervisedTraining::new(artifact_dir, dataloader_train, dataloader_test)
         //.metric_train(CudaMetric::new())
