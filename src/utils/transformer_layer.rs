@@ -1,6 +1,7 @@
 use crate::utils::{
     attention::BinaryMultiHeadAttention,
     bliniar::{BLinear, BLinearConfig},
+    entropy::Entropy,
     expand_reduce::ExpandReduce,
     gate::LogicGate,
 };
@@ -36,15 +37,26 @@ impl<B: Backend> TransformerLayer<B> {
     }
 
     // Tensors are 2D because of batching
-    pub fn forward(&self, x: Tensor<B, 3>, mask_pad: &Tensor<B, 2, Bool>) -> Tensor<B, 3> {
-        let x_attention = self
-            .attention
-            .forward(x.clone(), x.clone(), x.clone(), mask_pad);
-        let x = self.residual1.forward(x, x_attention);
-        let ffl = self.liniar1.forward(x.clone());
-        let ffl = self.liniar2.forward(ffl);
+    pub fn forward(
+        &self,
+        x: Tensor<B, 3>,
+        mask_pad: &Tensor<B, 2, Bool>,
+        entropy: &mut Entropy<B>,
+    ) -> Tensor<B, 3> {
+        let x_attention =
+            self.attention
+                .forward(x.clone(), x.clone(), x.clone(), mask_pad, entropy);
+        let x = self.residual1.forward(x, x_attention, entropy);
+
+        let [batch_size, token, embedding] = x.dims();
+        let ffl = x.clone().reshape([batch_size * token, embedding]);
+        let ffl = self.er_layer.forward(ffl, entropy);
+        let ffl = ffl.reshape([batch_size, token, embedding]);
+
+        //let ffl = self.liniar1.forward(x.clone());
+        //let ffl = self.liniar2.forward(ffl);
         //let ffl = self.er_layer.forward(x.clone());
-        let x = self.residual2.forward(x, ffl);
+        let x = self.residual2.forward(x, ffl, entropy);
         x
     }
 }

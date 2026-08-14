@@ -4,6 +4,8 @@ use burn::{
     prelude::*,
 };
 
+use crate::utils::entropy::Entropy;
+
 /// Configuration to create a [`BLinear`] layer using the [init function](BLinearConfig::init).
 #[derive(Config, Debug)]
 pub struct BLinearConfig {
@@ -80,19 +82,23 @@ impl<B: Backend> BLinear<B> {
     /// # Returns
     ///
     /// The transformed tensor of shape `[..., d_output]`.
-    pub fn forward<const D: usize>(&self, input: Tensor<B, D>) -> Tensor<B, D> {
+    pub fn forward<const D: usize>(
+        &self,
+        input: Tensor<B, D>,
+        entropy: &mut Entropy<B>,
+    ) -> Tensor<B, D> {
         // .transpose()
         /*B::linear(
             input.into_primitive().tensor(),
             self.weight.val().into_primitive().tensor(),
             Some(self.bias.val().into_primitive().tensor()),
         );*/
+        let weight = self.weight.val().tanh();
+        entropy.add_entropy(weight.clone());
+
         burn::tensor::module::linear(
             input,
-            self.weight
-                .val()
-                .tanh()
-                .mul(self.temperature.val().unsqueeze()),
+            weight.mul(self.temperature.val().unsqueeze()),
             Some(self.bias.val()),
         )
         .tanh()

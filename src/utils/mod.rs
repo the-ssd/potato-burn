@@ -3,6 +3,7 @@ use std::f32::consts::FRAC_PI_2;
 use burn::prelude::*;
 pub mod attention;
 pub mod bliniar;
+pub mod entropy;
 pub mod expand_reduce;
 pub mod expander;
 pub mod gate;
@@ -15,8 +16,8 @@ fn hamming_distance<B: Backend, const D: usize>(a: Tensor<B, D>, b: Tensor<B, D>
 
 // Keeps value within -1 and 1. While 1 is 1 and -1 is -1
 pub fn soft_clamp<B: Backend, const D: usize>(input: Tensor<B, D>) -> Tensor<B, D> {
-    (input * FRAC_PI_2).sin()
-    //input.tanh()
+    //(input * FRAC_PI_2).sin()
+    input.tanh()
 }
 
 pub fn softmax1<B: Backend, const D: usize>(input: Tensor<B, D>, dim: usize) -> Tensor<B, D> {

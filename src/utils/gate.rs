@@ -1,4 +1,4 @@
-use crate::utils::*;
+use crate::utils::{entropy::Entropy, *};
 use burn::{module::Param, nn::Initializer, prelude::*};
 
 #[derive(Module, Debug)]
@@ -38,11 +38,21 @@ impl<B: Backend> LogicGate<B> {
     }
 
     // Tensors are 2D because of batching
-    pub fn forward<const D: usize>(&self, a: Tensor<B, D>, b: Tensor<B, D>) -> Tensor<B, D> {
+    pub fn forward<const D: usize>(
+        &self,
+        a: Tensor<B, D>,
+        b: Tensor<B, D>,
+        entropy: &mut Entropy<B>,
+    ) -> Tensor<B, D> {
         //a.repeat_dim(1, times);
         //let a = a.clamp(-1.0, 1.0);
         //let b = b.clamp(-1.0, 1.0);
         let [w00, w01, w10, w11] = &self.params;
+        entropy.add_entropy(w00.val().tanh());
+        entropy.add_entropy(w01.val().tanh());
+        entropy.add_entropy(w10.val().tanh());
+        entropy.add_entropy(w11.val().tanh());
+
         //assert_eq!(a.dims()[1], w00.dims()[0]);
 
         /*assert!(

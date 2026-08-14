@@ -58,7 +58,7 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
     let dataloader_train = DataLoaderBuilder::new(batcher.clone())
         .batch_size(config.batch_size)
         .num_workers(8)
-        .build(SamplerDataset::new(dataset_train, 500_000)); // 20_000
+        .build(SamplerDataset::new(dataset_train, 100_000)); // 20_000
 
     let dataloader_test = DataLoaderBuilder::new(batcher)
         .batch_size(config.batch_size)
@@ -67,16 +67,16 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
 
     let accum = 3; // Effective batch size = 3 * 3 = 9
     let optim = config.optimizer.init();
-    /*let lr_scheduler = NoamLrSchedulerConfig::new(0.01 / accum as f64)
+    /*let lr_scheduler = NoamLrSchedulerConfig::new(0.05 / accum as f64)
     .with_warmup_steps(1000)
-    .with_model_size(config.transformer.d_model)
+    .with_model_size(config.model.d_model)
     .init()
     .unwrap();*/
 
-    let lr_scheduler = lr_scheduler::linear::LinearLrSchedulerConfig::new(0.001, 0.02, 2000)
-        .init()
-        .unwrap();
-    //let lr_scheduler = 0.02 / accum as f64;
+    /*let lr_scheduler = lr_scheduler::linear::LinearLrSchedulerConfig::new(0.001, 0.02, 2000)
+    .init()
+    .unwrap();*/
+    let lr_scheduler = 0.03 / accum as f64;
 
     let training = SupervisedTraining::new(artifact_dir, dataloader_train, dataloader_test)
         //.metric_train(CudaMetric::new())

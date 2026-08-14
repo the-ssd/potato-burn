@@ -1,6 +1,6 @@
 use crate::{
     data::{FalconTokenizer, Tokenizer, TrainingTextGenerationBatch},
-    utils::{transformer_layer::TransformerLayer, *},
+    utils::{entropy::Entropy, transformer_layer::TransformerLayer, *},
 };
 use burn::{
     module::Param,
@@ -26,7 +26,7 @@ pub struct TextGenerationModelConfig {
     #[config(default = 4)]
     n_heads: usize,
     #[config(default = 256)]
-    d_model: usize,
+    pub d_model: usize,
 }
 
 #[derive(Module, Debug)]
@@ -126,9 +126,11 @@ impl<B: Backend> TextGenerationModel<B> {
     pub fn forward_training(
         &self,
         item: TrainingTextGenerationBatch<B>,
+        sign: bool,
     ) -> ClassificationOutput<B> {
         let [batch_size, seq_length] = item.tokens_inputs.dims();
         let device = &self.devices()[0];
+        let mut entropy = Entropy::new(device);
 
         let inputs = item.tokens_inputs.to_device(device);
         let targets = item.targets.to_device(device);
@@ -139,10 +141,11 @@ impl<B: Backend> TextGenerationModel<B> {
         .repeat_dim(0, batch_size);*/
 
         //let embedding_positions = self.embedding_pos.forward(index_positions);
-        let embedding_tokens = self.embedding_token.forward(inputs);
+        let embedding_tokens = self.embedding_token.forward(inputs).tanh();
+        entropy.add_entropy(embedding_tokens.clone());
         //let embedding = (embedding_positions + embedding_tokens) / 2;
         //let embedding = xor(sigmoid(embedding_tokens), sigmoid(embedding_positions));
-        let embedding = soft_clamp(embedding_tokens);
+        let embedding = embedding_tokens;
 
         //let mask_attn = generate_autoregressive_mask::<B>(batch_size, seq_length, device);
         /*let encoded = self.transformer.forward(
@@ -152,7 +155,7 @@ impl<B: Backend> TextGenerationModel<B> {
         );*/
         let mut output = embedding;
         for transformer in &self.transformer_layers {
-            output = transformer.forward(output, &mask_pad);
+            output = transformer.forward(output, &mask_pad, &mut entropy);
         }
         let encoded = output;
 
@@ -169,6 +172,7 @@ impl<B: Backend> TextGenerationModel<B> {
             .with_pad_tokens(Some(vec![self.pad_token]))
             .init(&output_flatten.device());
         let loss = loss.forward(output_flatten.clone(), targets_flatten.clone());
+        println!("Entropy: {}", entropy.normalized());
 
         ClassificationOutput {
             loss,
@@ -183,7 +187,7 @@ impl<B: AutodiffBackend> TrainStep for TextGenerationModel<B> {
     type Output = ClassificationOutput<B>;
 
     fn step(&self, item: TrainingTextGenerationBatch<B>) -> TrainOutput<ClassificationOutput<B>> {
-        let item = self.forward_training(item);
+        let item = self.forward_training(item, false);
         let grads = item.loss.backward();
 
         TrainOutput::new(self, grads, item)
@@ -195,6 +199,6 @@ impl<B: Backend> InferenceStep for TextGenerationModel<B> {
     type Output = ClassificationOutput<B>;
 
     fn step(&self, item: TrainingTextGenerationBatch<B>) -> ClassificationOutput<B> {
-        self.forward_training(item)
+        self.forward_training(item, false)
     }
 }

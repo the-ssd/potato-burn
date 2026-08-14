@@ -34,13 +34,13 @@ pub fn infer() {
         .init::<B>(&device, &tokenizer)
         .load_record(record);
 
-    let mut text = String::new();
+    let mut text = "".to_string();
 
     loop {
         let batch: TrainingTextGenerationBatch<B> =
             batcher.batch(vec![TextGenerationItem::new(text.clone())], &device);
         //println!("{}", &batch.targets);
-        let output = model.forward_training(batch);
+        let output = model.forward_training(batch, false);
 
         let predicted: Vec<i32> = output
             .output
@@ -56,13 +56,13 @@ pub fn infer() {
         }
         //println!("{:?}", predicted);
 
-        let predicted = tokenizer.decode(
+        /*let predicted_str = tokenizer.decode(
             &predicted
-                .into_iter()
-                .map(|x| x as usize)
+                .iter()
+                .map(|x| *x as usize)
                 .collect::<Vec<_>>(),
-        );
-        println!("Text: {predicted}");
-        text = predicted;
+        );*/
+        text.push_str(&tokenizer.decode(&[*predicted.last().unwrap() as usize]));
+        println!("Text: {text}");
     }
 }

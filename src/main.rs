@@ -5,7 +5,7 @@
 use crate::{data::DbPediaDataset, training::ExperimentConfig};
 use burn::optim::{AdamConfig, decay::WeightDecayConfig};
 
-mod cifar;
+//mod cifar;
 mod cli_renderer;
 mod data;
 mod inference;

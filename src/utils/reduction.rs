@@ -1,6 +1,6 @@
 use burn::prelude::*;
 
-use crate::utils::gate::LogicGate;
+use crate::utils::{entropy::Entropy, gate::LogicGate};
 
 #[derive(Module, Debug)]
 pub struct Reducer<B: Backend> {
@@ -28,14 +28,14 @@ impl<B: Backend> Reducer<B> {
     }
 
     // Tensors are 2D because of batching
-    pub fn forward(&self, mut input: Tensor<B, 2>) -> Tensor<B, 2> {
+    pub fn forward(&self, mut input: Tensor<B, 2>, entropy: &mut Entropy<B>) -> Tensor<B, 2> {
         for gate in &self.gates {
             assert!(input.shape()[1] % 2 == 0);
             let size = input.shape()[1] / 2;
             let mut vec = input.split(size, 1);
             let a = vec.remove(0);
             let b = vec.remove(0);
-            input = gate.forward(a, b);
+            input = gate.forward(a, b, entropy);
         }
         input
     }

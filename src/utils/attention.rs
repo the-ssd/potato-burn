@@ -2,6 +2,7 @@ use burn::{module::Param, prelude::*};
 
 use crate::utils::{
     bliniar::{BLinear, BLinearConfig},
+    entropy::Entropy,
     expander::Expander,
     gate::LogicGate,
     reduction::Reducer,
@@ -17,6 +18,7 @@ pub struct BinaryMultiHeadAttention<B: Backend> {
     attention_mask: Tensor<B, 2, Bool>,
     alibi_dist: Tensor<B, 2>,
     alibi_slope: Param<Tensor<B, 1>>,
+    temperature_softmax: Param<Tensor<B, 1>>,
     temperature1: Param<Tensor<B, 1>>,
     bias1: Param<Tensor<B, 1>>,
     temperature2: Param<Tensor<B, 1>>,
@@ -50,6 +52,10 @@ impl<B: Backend> BinaryMultiHeadAttention<B> {
         BinaryMultiHeadAttention {
             attention_mask,
             alibi_dist,
+
+            temperature_softmax: Param::from_tensor(
+                Tensor::<B, 1>::from_data([1.0], device).expand([n_heads]),
+            ),
             temperature1: Param::from_tensor(
                 Tensor::<B, 1>::from_data([1.0], device).expand([n_heads]),
             ),
@@ -77,13 +83,14 @@ impl<B: Backend> BinaryMultiHeadAttention<B> {
         k: Tensor<B, 3>,
         v: Tensor<B, 3>,
         mask_pad: &Tensor<B, 2, Bool>,
+        entropy: &mut Entropy<B>,
     ) -> Tensor<B, 3> {
         let [batch_size, seq_length_1, d_model] = q.dims();
         let [batch_size, seq_length] = mask_pad.dims();
 
-        let q = self.attention_linear(q, &self.q);
-        let k = self.attention_linear(k, &self.k);
-        let v = self.attention_linear(v, &self.v);
+        let q = self.attention_linear(q, &self.q, entropy);
+        let k = self.attention_linear(k, &self.k, entropy);
+        let v = self.attention_linear(v, &self.v, entropy);
 
         let alibi_dist = self
             .alibi_dist
@@ -92,10 +99,12 @@ impl<B: Backend> BinaryMultiHeadAttention<B> {
         let alibi = alibi_dist.unsqueeze() * self.alibi_slope.val().unsqueeze_dims(&[0, -1, -1]);
         // TODO: change div?, add ALiBi
         let attn_scores = q.matmul(k.transpose()).div_scalar((self.d_k as f32).sqrt());
-        let attn_scores = (attn_scores * self.temperature1.val().unsqueeze_dims(&[0, -1, -1])
-            + self.bias1.val().unsqueeze_dims(&[0, -1, -1])
-            + alibi)
-            .tanh();
+        //let attn_scores = (attn_scores * self.temperature1.val().unsqueeze_dims(&[0, -1, -1])
+        //    + self.bias1.val().unsqueeze_dims(&[0, -1, -1])
+        //    + alibi)
+        //    .tanh();
+        let attn_scores =
+            attn_scores * self.temperature_softmax.val().unsqueeze_dims(&[0, -1, -1]) + alibi;
 
         let mask_attn = nn::attention::generate_autoregressive_mask::<B>(
             batch_size,
@@ -110,16 +119,22 @@ impl<B: Backend> BinaryMultiHeadAttention<B> {
             );
         let weights = softmax1(weights, 3);
 
-        // NOTE: No transposition
-        let context = (weights.matmul(v) * self.temperature1.val().unsqueeze_dims(&[0, -1, -1])
+        let weights = (weights * self.temperature1.val().unsqueeze_dims(&[0, -1, -1])
             + self.bias1.val().unsqueeze_dims(&[0, -1, -1]))
         .tanh();
+        entropy.add_entropy(weights.clone());
+
+        // NOTE: No transposition
+        let context = (weights.matmul(v) * self.temperature2.val().unsqueeze_dims(&[0, -1, -1])
+            + self.bias2.val().unsqueeze_dims(&[0, -1, -1]))
+        .tanh();
+        entropy.add_entropy(context.clone());
 
         let context = context
             .swap_dims(1, 2)
             .reshape([batch_size, seq_length_1, d_model]);
 
-        let context = self.output_projection.forward(context);
+        let context = self.output_projection.forward(context, entropy);
 
         context
         /*let q: Tensor<B, 4> = q.unsqueeze_dim(2);
@@ -143,10 +158,15 @@ impl<B: Backend> BinaryMultiHeadAttention<B> {
         output*/
     }
 
-    pub fn attention_linear(&self, x: Tensor<B, 3>, linear: &BLinear<B>) -> Tensor<B, 4> {
+    pub fn attention_linear(
+        &self,
+        x: Tensor<B, 3>,
+        linear: &BLinear<B>,
+        entropy: &mut Entropy<B>,
+    ) -> Tensor<B, 4> {
         let [batch_size, seq_length, _d_model] = x.dims();
         linear
-            .forward(x)
+            .forward(x, entropy)
             .reshape([batch_size, seq_length, self.n_heads, self.d_k])
             .swap_dims(1, 2)
     }
