@@ -12,7 +12,7 @@ burn = { version = "0.21.0", features = [
     "tui",
     "wgpu",
     "dataset",
-    "vision",
+    #"vision",
     "sqlite-bundled",
 ], default-features = false }
 log = "0.4.33"
@@ -25,3 +25,7 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[features]
+f16 = []
+cuda = ["burn/tch"]

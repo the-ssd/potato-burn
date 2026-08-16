@@ -14,15 +14,28 @@ mod utils;
 
 mod training;
 
-type Backend = burn::backend::Autodiff<burn::backend::Wgpu>;
+#[cfg(not(feature = "f16"))]
+type Elem = f32;
+#[cfg(feature = "f16")]
+type Elem = burn::tensor::f16;
+
+#[cfg(not(feature = "cuda"))]
+type Backend = burn::backend::Autodiff<burn::backend::Wgpu<Elem>>;
+#[cfg(feature = "cuda")]
+type Backend = burn::backend::Autodiff<burn::backend::LibTorch<Elem>>;
 
 fn main() {
     if std::env::args().any(|x| x == "--infer") {
         return inference::gpu_infer::infer();
     }
 
+    #[cfg(not(feature = "cuda"))]
     let device = Default::default();
+    #[cfg(feature = "cuda")]
+    let device = burn::backend::libtorch::LibTorchDevice::Cuda(0);
+
     // Force Vulkan
+    #[cfg(not(feature = "cuda"))]
     burn::backend::wgpu::init_setup::<burn::backend::wgpu::graphics::Vulkan>(
         &device,
         Default::default(),
