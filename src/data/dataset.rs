@@ -42,6 +42,7 @@ impl DbPediaDataset {
     pub fn new(split: &str) -> Self {
         let dataset: SqliteDataset<DbPediaItem> =
             HuggingfaceDatasetLoader::new("fancyzhx/dbpedia_14")
+                .with_use_python_venv(false)
                 .dataset(split)
                 .unwrap();
         Self { dataset }
