@@ -87,7 +87,7 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
     .unwrap();*/
     let lr_scheduler = 0.03 / accum as f64;
 
-    let training = SupervisedTraining::new(artifact_dir, dataloader_train, dataloader_test)
+    let mut training = SupervisedTraining::new(artifact_dir, dataloader_train, dataloader_test)
         //.metric_train(CudaMetric::new())
         //.metric_valid(CudaMetric::new())
         .metric_train_numeric(PerplexityMetric::new().with_pad_token(tokenizer.pad_token()))
@@ -102,6 +102,10 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
         .num_epochs(config.num_epochs)
         //.renderer(CliMetricsRenderer::new())
         .summary();
+
+    if std::env::args().any(|x| x == "--cli") {
+        training = training.renderer(CliMetricsRenderer::new());
+    }
 
     let result = training.launch(Learner::new(model, optim, lr_scheduler));
 

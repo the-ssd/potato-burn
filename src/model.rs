@@ -173,7 +173,10 @@ impl<B: Backend> TextGenerationModel<B> {
             .init(&output_flatten.device());
         let loss = loss.forward(output_flatten.clone(), targets_flatten.clone());
         let entropy = entropy.normalized();
-        //println!("Entropy: {}", entropy.clone().into_scalar());
+
+        if std::env::args().any(|x| x == "--print-entropy") {
+            println!("Entropy: {}", entropy.clone().into_scalar());
+        }
         //let loss = loss + entropy * 0.1;
 
         ClassificationOutput {
