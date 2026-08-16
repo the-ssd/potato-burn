@@ -53,7 +53,16 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
     let tokenizer = Arc::new(FalconTokenizer::default());
     let batcher = TextGenerationBatcher::new(tokenizer.clone(), config.max_seq_length);
 
-    let model = config.model.init::<B>(&device, &tokenizer);
+    let mut model = config.model.init::<B>(&device, &tokenizer);
+    if std::env::args().any(|x| x == "--continue") {
+        model = model
+            .load_file(
+                format!("{artifact_dir}/model"),
+                &DefaultRecorder::new(),
+                &device,
+            )
+            .unwrap();
+    }
 
     let dataloader_train = DataLoaderBuilder::new(batcher.clone())
         .batch_size(config.batch_size)
@@ -63,7 +72,7 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
     let dataloader_test = DataLoaderBuilder::new(batcher)
         .batch_size(config.batch_size)
         .num_workers(6)
-        .build(SamplerDataset::new(dataset_test, 1000));
+        .build(SamplerDataset::new(dataset_test, 10_000));
 
     let accum = 3; // Effective batch size = 3 * 3 = 9
     let optim = config.optimizer.init();

@@ -119,16 +119,17 @@ impl<B: Backend> BinaryMultiHeadAttention<B> {
             );
         let weights = softmax1(weights, 3);
 
-        let weights = (weights * self.temperature1.val().unsqueeze_dims(&[0, -1, -1])
+        let mut weights = (weights * self.temperature1.val().unsqueeze_dims(&[0, -1, -1])
             + self.bias1.val().unsqueeze_dims(&[0, -1, -1]))
         .tanh();
-        entropy.add_entropy(weights.clone());
+        entropy.add_entropy(&mut weights);
 
         // NOTE: No transposition
-        let context = (weights.matmul(v) * self.temperature2.val().unsqueeze_dims(&[0, -1, -1])
+        let mut context = (weights.matmul(v)
+            * self.temperature2.val().unsqueeze_dims(&[0, -1, -1])
             + self.bias2.val().unsqueeze_dims(&[0, -1, -1]))
         .tanh();
-        entropy.add_entropy(context.clone());
+        entropy.add_entropy(&mut context);
 
         let context = context
             .swap_dims(1, 2)

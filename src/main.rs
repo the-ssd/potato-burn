@@ -17,7 +17,9 @@ mod training;
 type Backend = burn::backend::Autodiff<burn::backend::Wgpu>;
 
 fn main() {
-    //return inference::gpu_infer::infer();
+    if std::env::args().any(|x| x == "--infer") {
+        return inference::gpu_infer::infer();
+    }
 
     let device = Default::default();
     // Force Vulkan

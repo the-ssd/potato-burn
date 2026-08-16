@@ -34,13 +34,16 @@ pub fn infer() {
         .init::<B>(&device, &tokenizer)
         .load_record(record);
 
-    let mut text = "".to_string();
+    let mut text = std::env::args().nth(2).unwrap_or(String::new());
+    let sign = std::env::args().any(|x| x == "--sign");
 
     loop {
         let batch: TrainingTextGenerationBatch<B> =
             batcher.batch(vec![TextGenerationItem::new(text.clone())], &device);
+
         //println!("{}", &batch.targets);
-        let output = model.forward_training(batch, false);
+        //let output = model.forward_training(batch, false);
+        let output = model.forward_training(batch, sign);
 
         let predicted: Vec<i32> = output
             .output
@@ -54,14 +57,7 @@ pub fn infer() {
         if *predicted.last().unwrap() == tokenizer.end_token() as i32 {
             break;
         }
-        //println!("{:?}", predicted);
 
-        /*let predicted_str = tokenizer.decode(
-            &predicted
-                .iter()
-                .map(|x| *x as usize)
-                .collect::<Vec<_>>(),
-        );*/
         text.push_str(&tokenizer.decode(&[*predicted.last().unwrap() as usize]));
         println!("Text: {text}");
     }

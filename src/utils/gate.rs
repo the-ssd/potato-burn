@@ -48,12 +48,17 @@ impl<B: Backend> LogicGate<B> {
         //let a = a.clamp(-1.0, 1.0);
         //let b = b.clamp(-1.0, 1.0);
         let [w00, w01, w10, w11] = &self.params;
-        entropy.add_entropy(w00.val().tanh());
-        entropy.add_entropy(w01.val().tanh());
-        entropy.add_entropy(w10.val().tanh());
-        entropy.add_entropy(w11.val().tanh());
+        let mut w00 = w00.val().tanh();
+        let mut w01 = w01.val().tanh();
+        let mut w10 = w10.val().tanh();
+        let mut w11 = w11.val().tanh();
 
-        //assert_eq!(a.dims()[1], w00.dims()[0]);
+        entropy.add_entropy(&mut w00);
+        entropy.add_entropy(&mut w01);
+        entropy.add_entropy(&mut w10);
+        entropy.add_entropy(&mut w11);
+
+        assert_eq!(a.dims()[D - 1], w00.dims()[0]);
 
         /*assert!(
             w00.val()
@@ -79,14 +84,14 @@ impl<B: Backend> LogicGate<B> {
         let correction = 1.0 / 16.0
             * (a.clone().powi_scalar(2) + b.clone().powi_scalar(2) - 2)
             * (1.0
-                - soft_clamp(w00.val().unsqueeze())
-                    * soft_clamp(w01.val().unsqueeze())
-                    * soft_clamp(w10.val().unsqueeze())
-                    * soft_clamp(w11.val().unsqueeze()))
-            * (soft_clamp(w00.val().unsqueeze())
-                + soft_clamp(w01.val().unsqueeze())
-                + soft_clamp(w10.val().unsqueeze())
-                + soft_clamp(w11.val().unsqueeze()));
+                - w00.clone().unsqueeze()
+                    * w01.clone().unsqueeze()
+                    * w10.clone().unsqueeze()
+                    * w11.clone().unsqueeze())
+            * (w00.clone().unsqueeze()
+                + w01.clone().unsqueeze()
+                + w10.clone().unsqueeze()
+                + w11.clone().unsqueeze());
 
         let a0: Tensor<B, D> = 1.0 - a.clone();
         let a1: Tensor<B, D> = 1.0 + a;
@@ -94,10 +99,10 @@ impl<B: Backend> LogicGate<B> {
         let b0: Tensor<B, D> = 1.0 - b.clone();
         let b1: Tensor<B, D> = 1.0 + b;
 
-        let lookup_table = (a0.clone() * b0.clone() * soft_clamp(w00.val().unsqueeze())
-            + a0 * b1.clone() * soft_clamp(w01.val().unsqueeze())
-            + a1.clone() * b0 * soft_clamp(w10.val().unsqueeze())
-            + a1 * b1 * soft_clamp(w11.val().unsqueeze()))
+        let lookup_table = (a0.clone() * b0.clone() * w00.clone().unsqueeze()
+            + a0 * b1.clone() * w01.clone().unsqueeze()
+            + a1.clone() * b0 * w10.clone().unsqueeze()
+            + a1 * b1 * w11.clone().unsqueeze())
             / 4.0;
 
         post_process(correction + lookup_table)

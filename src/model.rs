@@ -130,7 +130,7 @@ impl<B: Backend> TextGenerationModel<B> {
     ) -> ClassificationOutput<B> {
         let [batch_size, seq_length] = item.tokens_inputs.dims();
         let device = &self.devices()[0];
-        let mut entropy = Entropy::new(device);
+        let mut entropy = Entropy::new(sign, device);
 
         let inputs = item.tokens_inputs.to_device(device);
         let targets = item.targets.to_device(device);
@@ -141,8 +141,8 @@ impl<B: Backend> TextGenerationModel<B> {
         .repeat_dim(0, batch_size);*/
 
         //let embedding_positions = self.embedding_pos.forward(index_positions);
-        let embedding_tokens = self.embedding_token.forward(inputs).tanh();
-        entropy.add_entropy(embedding_tokens.clone());
+        let mut embedding_tokens = self.embedding_token.forward(inputs).tanh();
+        entropy.add_entropy(&mut embedding_tokens);
         //let embedding = (embedding_positions + embedding_tokens) / 2;
         //let embedding = xor(sigmoid(embedding_tokens), sigmoid(embedding_positions));
         let embedding = embedding_tokens;
@@ -172,7 +172,9 @@ impl<B: Backend> TextGenerationModel<B> {
             .with_pad_tokens(Some(vec![self.pad_token]))
             .init(&output_flatten.device());
         let loss = loss.forward(output_flatten.clone(), targets_flatten.clone());
-        println!("Entropy: {}", entropy.normalized());
+        let entropy = entropy.normalized();
+        //println!("Entropy: {}", entropy.clone().into_scalar());
+        //let loss = loss + entropy * 0.1;
 
         ClassificationOutput {
             loss,

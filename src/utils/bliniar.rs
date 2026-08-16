@@ -93,8 +93,8 @@ impl<B: Backend> BLinear<B> {
             self.weight.val().into_primitive().tensor(),
             Some(self.bias.val().into_primitive().tensor()),
         );*/
-        let weight = self.weight.val().tanh();
-        entropy.add_entropy(weight.clone());
+        let mut weight = self.weight.val().tanh();
+        entropy.add_entropy(&mut weight);
 
         burn::tensor::module::linear(
             input,

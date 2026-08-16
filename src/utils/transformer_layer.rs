@@ -14,7 +14,7 @@ pub struct TransformerLayer<B: Backend> {
     residual1: LogicGate<B>,
     liniar1: BLinear<B>,
     liniar2: BLinear<B>,
-    er_layer: ExpandReduce<B>,
+    //er_layer: ExpandReduce<B>,
     residual2: LogicGate<B>,
 }
 
@@ -31,7 +31,7 @@ impl<B: Backend> TransformerLayer<B> {
             residual1: LogicGate::init(device, d_model),
             liniar1: BLinearConfig::new(d_model, d_model * 4).init(device),
             liniar2: BLinearConfig::new(d_model * 4, d_model).init(device),
-            er_layer: ExpandReduce::init(device, d_model, d_model, &mut rand::rng()),
+            //er_layer: ExpandReduce::init(device, d_model - 128, d_model - 128, &mut rand::rng()),
             residual2: LogicGate::init(device, d_model),
         }
     }
@@ -48,14 +48,13 @@ impl<B: Backend> TransformerLayer<B> {
                 .forward(x.clone(), x.clone(), x.clone(), mask_pad, entropy);
         let x = self.residual1.forward(x, x_attention, entropy);
 
-        let [batch_size, token, embedding] = x.dims();
+        /*let [batch_size, token, embedding] = x.dims();
         let ffl = x.clone().reshape([batch_size * token, embedding]);
         let ffl = self.er_layer.forward(ffl, entropy);
-        let ffl = ffl.reshape([batch_size, token, embedding]);
+        let ffl = ffl.reshape([batch_size, token, embedding]);*/
 
-        //let ffl = self.liniar1.forward(x.clone());
-        //let ffl = self.liniar2.forward(ffl);
-        //let ffl = self.er_layer.forward(x.clone());
+        let ffl = self.liniar1.forward(x.clone(), entropy);
+        let ffl = self.liniar2.forward(ffl, entropy);
         let x = self.residual2.forward(x, ffl, entropy);
         x
     }
