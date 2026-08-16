@@ -45,7 +45,12 @@ fn main() {
 
     cifar::cifar_training::train::<Backend>(config, device);*/
 
-    let config = ExperimentConfig::default();
+    let mut config = ExperimentConfig::default();
+
+    if let Some(batches) = std::env::args().find(|x| x.starts_with("--batches=")) {
+        let batches: usize = batches.strip_prefix("--batches=").unwrap().parse().unwrap();
+        config.batch_size = batches;
+    }
 
     crate::training::train::<Backend, DbPediaDataset>(
         device,
