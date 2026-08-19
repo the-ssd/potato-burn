@@ -1,4 +1,7 @@
-use burn::{Tensor, tensor::backend::Backend};
+use burn::{
+    Tensor,
+    tensor::{Distribution, backend::Backend},
+};
 
 #[derive(Debug)]
 pub struct Entropy<B: Backend> {
@@ -23,7 +26,17 @@ impl<B: Backend> Entropy<B> {
 
         let entropy: Tensor<B, D> = 1.0 - data.clone().powi_scalar(2);
         if self.sign {
-            *data = data.clone().sign();
+            /*let random = data
+            .random_like(Distribution::Default)
+            .lower_elem(self.sign_threshold);*/
+            let sign = data.clone().sign();
+            // STE
+            let sign = data.clone() - data.clone().detach() + sign.detach();
+
+            *data = sign;
+            //*data = data.clone().mask_where(random, sign);
+
+            //*data = data.clone().sign();
         }
         //let entropy: Tensor<B, D> = 1.0 - data.abs();
         //println!("{entropy}");

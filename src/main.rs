@@ -51,6 +51,15 @@ fn main() {
         let batches: usize = batches.strip_prefix("--batches=").unwrap().parse().unwrap();
         config.batch_size = batches;
     }
+    if let Some(dim) = std::env::args().find(|x| x.starts_with("--dim=")) {
+        let dim: usize = dim.strip_prefix("--dim=").unwrap().parse().unwrap();
+        config.model.d_model = dim;
+        config.model.embedding_dimensions = dim;
+    }
+    if let Some(layers) = std::env::args().find(|x| x.starts_with("--layers=")) {
+        let layers: usize = layers.strip_prefix("--layers=").unwrap().parse().unwrap();
+        config.model.num_layers = layers;
+    }
 
     crate::training::train::<Backend, DbPediaDataset>(
         device,

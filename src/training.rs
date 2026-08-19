@@ -26,7 +26,7 @@ use std::sync::Arc;
 pub struct ExperimentConfig {
     pub model: TextGenerationModelConfig,
     optimizer: AdamConfig,
-    #[config(default = 256)]
+    #[config(default = 512)]
     pub max_seq_length: usize,
     #[config(default = 3)]
     pub batch_size: usize,
@@ -64,15 +64,21 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
             .unwrap();
     }
 
+    let samples = if let Some(samples) = std::env::args().find(|x| x.starts_with("--samples=")) {
+        samples.strip_prefix("--samples=").unwrap().parse().unwrap()
+    } else {
+        100_000
+    };
+
     let dataloader_train = DataLoaderBuilder::new(batcher.clone())
         .batch_size(config.batch_size)
         .num_workers(8)
-        .build(SamplerDataset::new(dataset_train, 100_000)); // 20_000
+        .build(SamplerDataset::new(dataset_train, samples)); // 20_000
 
     let dataloader_test = DataLoaderBuilder::new(batcher)
         .batch_size(config.batch_size)
         .num_workers(6)
-        .build(SamplerDataset::new(dataset_test, 10_000));
+        .build(SamplerDataset::new(dataset_test, 2_000));
 
     let accum = 3; // Effective batch size = 3 * 3 = 9
     let optim = config.optimizer.init();

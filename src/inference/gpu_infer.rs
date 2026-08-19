@@ -35,7 +35,6 @@ pub fn infer() {
         .load_record(record);
 
     let mut text = std::env::args().nth(2).unwrap_or(String::new());
-    let sign = std::env::args().any(|x| x == "--sign");
 
     loop {
         let batch: TrainingTextGenerationBatch<B> =
@@ -43,7 +42,7 @@ pub fn infer() {
 
         //println!("{}", &batch.targets);
         //let output = model.forward_training(batch, false);
-        let output = model.forward_training(batch, sign);
+        let output = model.forward_training(batch);
 
         let predicted: Vec<i32> = output
             .output

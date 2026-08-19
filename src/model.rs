@@ -18,13 +18,13 @@ use burn::{
 #[derive(Config, Debug)]
 pub struct TextGenerationModelConfig {
     #[config(default = 4)]
-    num_layers: usize,
+    pub num_layers: usize,
     #[config(default = 256)]
-    max_seq_length: usize,
+    pub max_seq_length: usize,
     #[config(default = 256)]
-    embedding_dimensions: usize,
+    pub embedding_dimensions: usize,
     #[config(default = 4)]
-    n_heads: usize,
+    pub n_heads: usize,
     #[config(default = 256)]
     pub d_model: usize,
 }
@@ -81,6 +81,21 @@ Total Epochs: 1
 | Valid | Perplexity    | 42.219   | 1        | 42.219   | 1        |
 
 
+  params: 11551866
+}
+Total Epochs: 1
+
+
+| Split | Metric        | Min.     | Epoch    | Max.     | Epoch    |
+|-------|---------------|----------|----------|----------|----------|
+| Train | Accuracy      | 19.290   | 1        | 19.290   | 1        |
+| Train | Learning Rate | 1.000e-2 | 1        | 1.000e-2 | 1        |
+| Train | Loss          | 3.929    | 1        | 3.929    | 1        |
+| Train | Perplexity    | 295.960  | 1        | 295.960  | 1        |
+| Valid | Accuracy      | 21.728   | 1        | 21.728   | 1        |
+| Valid | Loss          | 3.732    | 1        | 3.732    | 1        |
+| Valid | Perplexity    | 181.135  | 1        | 181.135  | 1        |
+
 
 */
 impl TextGenerationModelConfig {
@@ -126,8 +141,9 @@ impl<B: Backend> TextGenerationModel<B> {
     pub fn forward_training(
         &self,
         item: TrainingTextGenerationBatch<B>,
-        sign: bool,
     ) -> ClassificationOutput<B> {
+        let sign = std::env::args().any(|x| x == "--sign");
+
         let [batch_size, seq_length] = item.tokens_inputs.dims();
         let device = &self.devices()[0];
         let mut entropy = Entropy::new(sign, device);
@@ -192,7 +208,7 @@ impl<B: AutodiffBackend> TrainStep for TextGenerationModel<B> {
     type Output = ClassificationOutput<B>;
 
     fn step(&self, item: TrainingTextGenerationBatch<B>) -> TrainOutput<ClassificationOutput<B>> {
-        let item = self.forward_training(item, false);
+        let item = self.forward_training(item);
         let grads = item.loss.backward();
 
         TrainOutput::new(self, grads, item)
@@ -204,6 +220,6 @@ impl<B: Backend> InferenceStep for TextGenerationModel<B> {
     type Output = ClassificationOutput<B>;
 
     fn step(&self, item: TrainingTextGenerationBatch<B>) -> ClassificationOutput<B> {
-        self.forward_training(item, false)
+        self.forward_training(item)
     }
 }
