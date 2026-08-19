@@ -26,8 +26,6 @@ use std::sync::Arc;
 pub struct ExperimentConfig {
     pub model: TextGenerationModelConfig,
     optimizer: AdamConfig,
-    #[config(default = 512)]
-    pub max_seq_length: usize,
     #[config(default = 3)]
     pub batch_size: usize,
     #[config(default = 1)]
@@ -51,7 +49,7 @@ pub fn train<B: AutodiffBackend, D: Dataset<TextGenerationItem> + 'static>(
     artifact_dir: &str,
 ) {
     let tokenizer = Arc::new(FalconTokenizer::default());
-    let batcher = TextGenerationBatcher::new(tokenizer.clone(), config.max_seq_length);
+    let batcher = TextGenerationBatcher::new(tokenizer.clone(), config.model.max_seq_length);
 
     let mut model = config.model.init::<B>(&device, &tokenizer);
     if std::env::args().any(|x| x == "--continue") {

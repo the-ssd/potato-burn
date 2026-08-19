@@ -28,7 +28,7 @@ pub fn infer() {
         .unwrap();
 
     let tokenizer = Arc::new(FalconTokenizer::default());
-    let batcher = TextGenerationBatcher::new(tokenizer.clone(), config.max_seq_length);
+    let batcher = TextGenerationBatcher::new(tokenizer.clone(), config.model.max_seq_length);
     let model = config
         .model
         .init::<B>(&device, &tokenizer)
